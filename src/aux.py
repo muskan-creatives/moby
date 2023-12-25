@@ -23,5 +23,6 @@ def get_folder_from_path(file_path):
     else:
         delimiter = "/"
 
-    split_path = file_path.split(delimiter)[:-1]
-    return delimiter.join(split_path)
+    split_path = file_path.split(delimiter)
+    path, filename = split_path[:-1], split_path[-1]
+    return delimiter.join(path), filename
