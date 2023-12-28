@@ -3,7 +3,7 @@ import pandas as pd
 from src.aux import get_folder_from_path
 
 
-def read_any(file,output=False,outpath=None):
+def read_any(file,output=False, outpath=None):
     if not output:
         extension = ((file.name).split('.'))[-1]
         if extension == "csv":
