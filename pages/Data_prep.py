@@ -1,11 +1,13 @@
 import os
+import json
+import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 from src.input_output import read_any
 from src.aux import get_folder_from_path, delimiter, valuebox_renderer
 from st_aggrid import AgGrid, GridOptionsBuilder
-
+from streamlit_extras.switch_page_button import switch_page
 
 @st.cache_data
 def save_csv(file:pd.DataFrame, path, filename, deli=delimiter):
@@ -43,7 +45,10 @@ def main():
         if boolean0:
             st.title('file upload')
             file = st.file_uploader('Choose file')
-        submit = st.form_submit_button("Submit")
+            disabled = False
+        else:
+            disabled = True
+        submit = st.form_submit_button("Submit", disabled=disabled)
         # if the file was loaded
         if boolean0 and submit:
             if file:
@@ -98,10 +103,12 @@ def main():
             if dependent in independents:
                 independents.pop(independents.index(dependent))
             file_read = st.session_state.get('raw_data')
-            selected_data = file_read[[dependent] + independents]
+            all_vars = [dependent] + independents
+            selected_data = file_read[all_vars]
             st.session_state.update({'data': selected_data,
                                      'dependent': dependent,
-                                     'independents': independents})
+                                     'independents': independents,
+                                     'all_vars': all_vars})
             st.dataframe(selected_data.head())
             st.write("shape: ",selected_data.shape)
             plot(selected_data, dependent, independents)
@@ -154,12 +161,81 @@ def main():
             st.write(data_copy.shape)
             plot(data_copy, dependent, independents)
 
+    with st.form("further treatment of the data"):
+        st.title("treatments")
+        # this would include treatment of missing data and
+        # selection of rows based on a condition being satisfied.
+        boolean4 = 'transformed_data' in list(st.session_state.keys())
+        if boolean4:
+            st.write("treatment of NAs")
+            drop_na = st.checkbox("drop_NA", value=True)
+            replace_na = st.number_input("replace NAs with: ",)
+            st.divider()
+
+            st.write("drop rows for any value NOT in between")
+            select_vars = st.multiselect("choose_variables: ",options=st.session_state.get('all_vars'))
+            col1, col2, _ = st.columns([1, 1, 5])
+            range1 = col1.text_input("from")
+            range2 = col2.text_input("to")
+
+            st.divider()
+            st.write("drop rows for values equal to")
+            range3 = st.text_input("drop rows for any value equal to: (separate values with commas) ")
+            drop_by_text = st.text_input("drop rows which have the text: (only one value)")
+
+            st.divider()
+        button = st.form_submit_button('Go')
+        if button and boolean4:
+            trans_data = st.session_state.get('transformed_data').copy()
+            if drop_na:
+                trans_data.dropna(inplace=True, ignore_index=True)
+                st.session_state.update({'na_treatment': 'drop'})
+                st.session_state.update({'na_fill': 'None'})
+            else:
+                trans_data.fillna(value=replace_na, inplace=True, ignore_index=True)
+                st.session_state.update({'na_treatment': 'fill'})
+                st.session_state.update({'na_fill': replace_na})
+
+            if select_vars and (range1 or range2):
+                if not range1:
+                    range2 = eval(range2)
+                    range1 = -np.inf
+                else:
+                    range1 = eval(range1)
+                    range2 = np.inf
+                # the cells which are in the range
+                condition = (trans_data[select_vars].values >= range1) | \
+                            (trans_data[select_vars].values <= range2)
+                # retain only these rows
+                trans_data.drop(np.where(condition.any(axis=1)), inplace=True)
+                trans_data.reset_index(inplace=True)
+                st.session_state.update({'range_selection': True})
+                st.session_state.update({'range': [range1, range2]})
+
+            if range3:
+                # split text into distinct values
+                list_of_texts = (((range3.split('['))[1].split(']'))[0]).split(',')
+                list_of_numbers = [eval(i) for i in list_of_texts]
+                for element in list_of_numbers:
+                    trans_data.drop(np.where((trans_data.values == element).any(axis=1)))
+                    trans_data.reset_index(inplace=True)
+                st.session_state.update({'drop_variables_by_values': list_of_numbers})
+
+            if drop_by_text:
+                trans_data.drop(np.where((trans_data.values == drop_by_text).any(axis=1)))
+                trans_data.reset_index(inplace=True)
+                st.session_state.update({'drop_variables_by_text': drop_by_text})
+
+            st.session_state.update({'treated_data': trans_data})
+            st.write("treated data:")
+            st.dataframe(trans_data)
+
     with st.form("save_outputs1"):
         st.title('save outputs')
-        boolean4 = 'transformed_data' in list(st.session_state.keys())
-        boolean5 = 'out_path' in list(st.session_state.keys())
-        if boolean4:
-            if boolean5:
+        boolean5 = 'treated_data' in list(st.session_state.keys())
+        boolean6 = 'out_path' in list(st.session_state.keys())
+        if boolean5:
+            if boolean6:
                 out_path = st.session_state.get('out_path')
                 st.write('Click to save files here :', out_path)
             else:
@@ -167,18 +243,31 @@ def main():
                 st.write('Please create one using the form at the top of the page.')
 
         button = st.form_submit_button('Go')
-        if button and boolean4 and boolean5:
+        if button and boolean5 and boolean6:
             try:
-                st.session_state.get('trans').to_csv(out_path + 'transformations_applied.csv')
-                st.session_state.get('transformed_data').to_csv(out_path + 'transformed_data.csv')
+                st.session_state.get('trans').to_csv(out_path + delimiter + 'transformations_applied.csv')
+                treatment_file = {'title': 'file to store the treatments applied to the data'}
+                treatments = ['na_treatment', 'na_fill', 'range_selection', 'range',
+                              'drop_variables_by_values', 'drop_variables_by_text']
+                for treatment in treatments:
+                    if treatment in list(st.session_state.keys()):
+                        treatment_file.update({treatment : st.session_state.get(treatment)})
+                with open(out_path + delimiter + 'treatments.json', 'w') as f:
+                    json.dump(treatment_file, f)
+                st.session_state.get('transformed_data').to_csv(out_path + delimiter + 'transformed_data.csv')
+                st.session_state.get('treated_data').to_csv(out_path + delimiter + 'treated_data.csv')
+                st.session_state.update({'files_saved': True})
                 st.write('files_saved')
             except FileNotFoundError:
                 st.write("Error : please check all the above steps.")
-    with st.form("further treatment of the data"):
-        # this would include treatment of missing data and
-        # selection of rows based on a condition being satisfied.
+        else:
+            st.session_state.update({'files_saved': False})
 
-        pass
+    with st.form("proceed_to_model_build"):
+        st.write('Click to proceed to model build')
+        button = st.form_submit_button('Go')
+        if button:
+            switch_page('sampling')
 
 
 if __name__ == "__main__":
