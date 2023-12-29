@@ -61,3 +61,18 @@ class DataReader{
     }
 }//end class
 """)
+
+
+def exists(string):
+    return string in list(st.session_state.keys())
+
+
+def get(string):
+    try:
+        return st.session_state.get(string)
+    except KeyError:
+        print('Key does not exist!')
+
+
+def update(string, value):
+    st.session_state.update({string: value})
