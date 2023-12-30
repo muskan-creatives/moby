@@ -40,6 +40,7 @@ def variable_list(dependent,independents):
 def main():
     st.set_page_config(page_title="Moby - Data prep")
     st.title('Data prep')
+    st.sidebar.success("Components")
 
     with st.form("choose_file"):
         boolean0 = not exists('raw_data')
@@ -267,7 +268,7 @@ def main():
         else:
             update('files_saved', False)
 
-    with st.form("proceed_to_model_build"):
+    with st.form("proceed_to_sampling"):
         st.write('Click to proceed to sampling')
         button = st.form_submit_button('Go')
         if button:

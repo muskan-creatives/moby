@@ -6,6 +6,7 @@ from src.aux import update
 from streamlit_extras.switch_page_button import switch_page
 st.set_page_config(page_title="Moby")
 st.title('Model Builder')
+st.sidebar.success("Components")
 
 option = st.radio('',['Start with the data I have',
                       'Just curious'])
@@ -18,4 +19,4 @@ if click:
         update('col_names', column_names)
         update('raw_data', file_read)
         update('path', get_folder_from_path(os.path.abspath(__file__))[0])
-    switch_page('data_prep')
+    switch_page('Data_prep')
